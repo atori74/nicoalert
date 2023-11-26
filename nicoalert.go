@@ -37,54 +37,61 @@ type UserAgent struct {
 }
 
 func (ua *UserAgent) connectPushService() (*websocket.Conn, error) {
-	url := url.URL{Scheme: "wss", Host: ua.PushServiceHost, Path: "/"}
-	header := http.Header{}
-	header.Set("Sec-WebSocket-Protocol", "push-notification")
-	header.Set("Ssc-WebSocket-Version", "13")
-	conn, _, err := websocket.DefaultDialer.Dial(url.String(), header)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
+	retry := 5
+	var err error
+	for i := 0; i < retry+1; i++ {
+		url := url.URL{Scheme: "wss", Host: ua.PushServiceHost, Path: "/"}
+		header := http.Header{}
+		header.Set("Sec-WebSocket-Protocol", "push-notification")
+		header.Set("Ssc-WebSocket-Version", "13")
+		conn, _, err := websocket.DefaultDialer.Dial(url.String(), header)
+		if err != nil {
+			continue
+		}
 
-	hello := struct {
-		MessageType string       `json:"messageType"`
-		Broadcasts  *interface{} `json:"broadcasts"`
-		UseWebpush  bool         `json:"use_webpush"`
-		UAID        string       `json:"uaid,omitempty"`
-	}{
-		MessageType: "hello",
-		Broadcasts:  nil,
-		UseWebpush:  true,
-		UAID:        ua.UAID,
-	}
+		hello := struct {
+			MessageType string       `json:"messageType"`
+			Broadcasts  *interface{} `json:"broadcasts"`
+			UseWebpush  bool         `json:"use_webpush"`
+			UAID        string       `json:"uaid,omitempty"`
+		}{
+			MessageType: "hello",
+			Broadcasts:  nil,
+			UseWebpush:  true,
+			UAID:        ua.UAID,
+		}
 
-	m, err := json.Marshal(hello)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-	err = conn.WriteMessage(websocket.TextMessage, m)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
+		m, err := json.Marshal(hello)
+		if err != nil {
+			conn.Close()
+			continue
+		}
+		err = conn.WriteMessage(websocket.TextMessage, m)
+		if err != nil {
+			conn.Close()
+			continue
+		}
 
-	_, r, err := conn.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-	var rec map[string]interface{}
-	err = json.Unmarshal(r, &rec)
-	if err != nil {
-		return nil, err
-	}
-	if rec["messageType"].(string) != "hello" {
-		return nil, errors.New("Did not receive hello response")
-	}
-	ua.UAID = rec["uaid"].(string)
+		_, r, err := conn.ReadMessage()
+		if err != nil {
+			conn.Close()
+			continue
+		}
+		var rec map[string]interface{}
+		err = json.Unmarshal(r, &rec)
+		if err != nil {
+			conn.Close()
+			continue
+		}
+		if rec["messageType"].(string) != "hello" {
+			err = errors.New("Did not receive hello response")
+			continue
+		}
+		ua.UAID = rec["uaid"].(string)
 
-	return conn, nil
+		return conn, nil
+	}
+	return nil, err
 }
 
 // Subscriptionをregisterする
