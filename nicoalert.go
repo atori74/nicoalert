@@ -179,7 +179,8 @@ func (ua *UserAgent) ReadMessages(conn *websocket.Conn) error {
 					if err != nil {
 						break
 					}
-					fmt.Println(string(dec))
+					Debug(fmt.Sprintf("Decrypted bytes: %v", dec))
+					fmt.Printf("%s\n", dec)
 					break
 				}
 			}
@@ -277,12 +278,23 @@ func (s *Subscription) DecryptMessage(payload []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	plainText, err := gcm.Open([]byte{}, nonce, cipherText, nil)
+	plainText, err := gcm.Open(nil, nonce, cipherText, nil)
 	if err != nil {
 		return plainText, err
 	}
 
-	return plainText, nil
+	// Remove padding
+	message := removePadding(plainText, 0x02)
+
+	return message, nil
+}
+
+func removePadding(payload []byte, sep byte) []byte {
+	li := bytes.LastIndexByte(payload, sep)
+	if li == -1 {
+		return payload
+	}
+	return payload[:li]
 }
 
 func getHKDFKey(hkdf io.Reader, length int) ([]byte, error) {
