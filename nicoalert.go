@@ -152,6 +152,7 @@ func (ua *UserAgent) registerSubscription(conn *websocket.Conn, vapID string) (*
 }
 
 func (ua *UserAgent) ReadMessages(conn *websocket.Conn) error {
+	Debug("Waiting for messages from push service.")
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
@@ -199,6 +200,7 @@ type Subscription struct {
 func (s *Subscription) requestPushDelivery(requestURI string) error {
 	jar, err := niconicoLogin()
 	if err != nil {
+		Debug("Error in niconico login.")
 		return err
 	}
 
@@ -212,14 +214,18 @@ func (s *Subscription) requestPushDelivery(requestURI string) error {
 	)
 
 	req, err := http.NewRequest("POST", requestURI, strings.NewReader(params))
-	req.Header.Set("Referer", "https://account.nicovideo.jp/my/account")
+	req.Header.Set("Referer", "https://account.nicovideo.jp/")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-request-with", "https://account.nicovideo.jp/my/account")
 	req.Header.Set("x-frontend-id", "8")
 
 	res, err := client.Do(req)
-	if err != nil || res.StatusCode != 200 {
+	if err != nil {
 		return err
+	} else if res.StatusCode != 200 {
+		body, _ := io.ReadAll(res.Body)
+		Debug(fmt.Sprintf("%s: %s", res.Status, string(body)))
+		return errors.New("Error occured in push request to niconico.")
 	}
 	return nil
 }
@@ -361,6 +367,7 @@ func main() {
 		Debug(err)
 		return
 	}
+	Debug("Connected to push service successfully.")
 
 	// Subscriptionをregisterする
 	// Input: chid, VapID
@@ -370,6 +377,7 @@ func main() {
 		Debug(err)
 		return
 	}
+	Debug("Registered subscription successfully.")
 
 	// ニコニコAPにPushEndpointを登録する
 	// Input: PushEndpoint, Authシークレット, クライアントPubkey
@@ -379,6 +387,7 @@ func main() {
 		Debug(err)
 		return
 	}
+	Debug("Requested for push delivery to niconico.")
 
 	// WebsocketからNotificationを受け取る
 	// Input: None
